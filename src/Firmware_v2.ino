@@ -1,38 +1,48 @@
-/*
- * Project Firmware_v2
- * Description:
- * Author: Sam Hall
- * Date: 2018-02-18
- */
+#include "HX711ADC.h"
 
- int onboardLED = D7;
- int count = 0;
+// HX711.DOUT	- pin #A1
+// HX711.PD_SCK	- pin #A0
+// tare pin - pin #D1
 
- void setup() {
+HX711ADC scale;		// parameter "gain" is ommited; the default value 128 is used by the library
+int tare_pin = D1;
+bool do_tare = false;
 
-   pinMode(onboardLED, OUTPUT);
+void set_tare();
 
- }
+void setup() {
 
- void loop() {
-   // To blink the LED, first we'll turn it on...
-   digitalWrite(onboardLED, HIGH);
+  scale = HX711ADC(A1, A0);
 
-   delay(500);
+  Serial.begin(38400);
 
-   // Then we'll turn it off...
-   digitalWrite(onboardLED, LOW);
+  pinMode(tare_pin, INPUT);
+  attachInterrupt(tare_pin, set_tare, RISING);
 
-   delay(500);
+  scale.set_scale(227000.95);                      // this value is obtained by calibrating the scale with known weights; see the README for details
+  scale.tare();				        // reset the scale to 0
+}
 
-   if(count > 60) {
-     // Get some data
-     String data = "Message from photon! ;)";
-     // Trigger the integration
-     Particle.publish("weighme-heartbeat", data, PRIVATE);
+void loop() {
 
-     count = 0;
-   }
+  Serial.print("raw: ");
+  Serial.print(scale.read(), 1);
+  Serial.print(" | value: ");
+  Serial.print(scale.get_value(10), 1);
+  Serial.print(" | units (kg): ");
+  Serial.println(scale.get_units(10), 3);
 
-   count++;
- }
+  if(do_tare) {
+    Serial.println("zeroing...");
+    scale.tare();
+    do_tare = false;
+  }
+
+  scale.power_down();			        // put the ADC in sleep mode
+  delay(2000);
+  scale.power_up();
+}
+
+void set_tare() {
+  do_tare = true;
+}
