@@ -9,11 +9,15 @@ int tare_pin = D1;
 int led_pin = D7;
 bool do_tare = false;
 
+float threshold = 0.015;
 float weight = 0;
+String name = "";
 
 int pub_count = 0;
 
-void set_tare();
+void nameHandler(const char *topic, const char *data);
+void tareEvent();
+void weighEvent();
 
 void setup() {
 
@@ -23,7 +27,10 @@ void setup() {
 
   pinMode(led_pin, OUTPUT);
   pinMode(tare_pin, INPUT);
-  attachInterrupt(tare_pin, set_tare, RISING);
+  attachInterrupt(tare_pin, tareEvent, RISING);
+
+  Particle.subscribe("particle/device/name", nameHandler);
+  Particle.publish("particle/device/name");
 
   scale.set_scale(220000.95);                      // this value is obtained by calibrating the scale with known weights; see the README for details
   scale.tare();				        // reset the scale to 0
@@ -31,12 +38,12 @@ void setup() {
 
 void loop() {
   pub_count++;
-  weight = scale.get_units(10);
+  weight = scale.get_units(3);
 
   Serial.print("raw: ");
   Serial.print(scale.read(), 1);
   Serial.print(" | value: ");
-  Serial.print(scale.get_value(10), 1);
+  Serial.print(scale.get_value(3), 1);
   Serial.print(" | units (kg): ");
   Serial.println(weight, 3);
 
@@ -48,21 +55,42 @@ void loop() {
 
   if(pub_count > 10) {
     Serial.println("sending to cloud...");
+    weighEvent();
 
-    String w = String(weight);
+    digitalWrite(led_pin, HIGH);
+    delay(250);
+    digitalWrite(led_pin, LOW);
+    delay(250);
 
-    Particle.publish("weighme-heartbeat", w, PRIVATE);
     pub_count = 0;
   }
 
   scale.power_down(); // put the ADC in sleep mode
   digitalWrite(led_pin, HIGH);
-  delay(1000);
+  delay(250);
   digitalWrite(led_pin, LOW);
-  delay(500);
+  delay(1500);
   scale.power_up();
 }
 
-void set_tare() {
+void nameHandler(const char *topic, const char *data) {
+  name = String(data);
+}
+
+void tareEvent() {
   do_tare = true;
+}
+
+void weighEvent() {
+  String data =  "{ \"data\": { \"deviceName\": \"<name>\", \"reading\": {"
+    "\"weight\": \"<weight>\", \"units\": \"<units>\" }, \"offset\": \"<offset>\", "
+    "\"scaler\": \"<scaler>\", \"threshold\": \"<threshold>\" }}";
+  data = data.replace("<name>", name);
+  data = data.replace("<weight>", String(weight));
+  data = data.replace("<units>", "kg");
+  data = data.replace("<offset>", String(scale.get_offset()));
+  data = data.replace("<scaler>", String(scale.get_scale()));
+  data = data.replace("<threshold>", String(threshold));
+
+  Particle.publish("weighme-heartbeat", data, PRIVATE);
 }
